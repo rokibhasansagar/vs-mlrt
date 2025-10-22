@@ -149,7 +149,6 @@ jobs:
         compression-level: 0
 
     - name: Download External Models
-      if: false
       run: |
         rm -rf release
         set -ex
@@ -171,11 +170,10 @@ jobs:
         popd
         ls -lR
         du -sh
-        7za a -t7z -bb3 -mx=9 ../ext-models.7z .
+        7za a -t7z -bb3 -mx=9 -v2147483647b ../ext-models.7z .
 
     - name: Upload external model release
       uses: actions/upload-artifact@v4
-      if: false
       with:
         name: External-Models
         path: release
@@ -217,7 +215,7 @@ jobs:
     - name: Rename release asset
       run: |
         mv models.7z models.${{ github.event.inputs.tag }}.7z
-        mv ext-models.7z ext-models.${{ github.event.inputs.tag }}.7z
+        for i in {001..002}; do mv ext-models.7z.${i} ext-models.${{ github.event.inputs.tag }}.7z.${i}; done
         mv contrib-models.7z contrib-models.${{ github.event.inputs.tag }}.7z
 
     - name: Release models
@@ -226,7 +224,7 @@ jobs:
         tag_name: ${{ github.event.inputs.tag }}
         files: |
           models.${{ github.event.inputs.tag }}.7z
-          ext-models.${{ github.event.inputs.tag }}.7z
+          ext-models.${{ github.event.inputs.tag }}.7z.*
           contrib-models.${{ github.event.inputs.tag }}.7z
         fail_on_unmatched_files: true
         generate_release_notes: false
@@ -250,8 +248,19 @@ jobs:
     - name: Download artifact for models
       uses: actions/download-artifact@v4
       with:
-        pattern: *Models
-        merge-multiple: true
+        name: Models
+        path: models-release
+
+    - name: Download artifact for ext-models
+      uses: actions/download-artifact@v4
+      with:
+        name: External-Models
+        path: models-release
+
+    - name: Download artifact for contrib-models
+      uses: actions/download-artifact@v4
+      with:
+        name: Contrib-Models
         path: models-release
 
     - name: Download artifact for vsov
@@ -320,6 +329,37 @@ jobs:
         name: vsmlrt-hip
         path: hip-release
 
+    - name: Build CPU-only Linux release
+      shell: bash
+      run: |
+        mkdir release-cpu-linux
+        cp -r vsov-release-linux/* release-cpu-linux/
+        cp -r vsort-release-linux/* release-cpu-linux/
+        cp scripts-release/*.py release-cpu-linux/
+        cd release-cpu-linux
+        ls -lR
+        7za a -t7z -bb3 -mx=9 ../vsmlrt-linux-x64-cpu.7z .
+
+    - name: Upload CPU-only Linux release
+      uses: actions/upload-artifact@v4
+      with:
+        name: vsmlrt-cpu-release-linux
+        path: vsmlrt-linux-x64-cpu.7z
+        retention-days: 1
+        compression-level: 0
+
+    - name: Rename release asset
+      run: mv vsmlrt-linux-x64-cpu.7z vsmlrt-linux-x64-cpu.${{ github.event.inputs.tag }}.7z
+
+    - name: Release CPU Linux
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ github.event.inputs.tag }}
+        files: vsmlrt-linux-x64-cpu.${{ github.event.inputs.tag}}.7z
+        fail_on_unmatched_files: true
+        generate_release_notes: false
+        prerelease: true
+
     - name: Build CPU-only release
       shell: bash
       run: |
@@ -335,7 +375,6 @@ jobs:
 
     - name: Upload CPU-only release
       uses: actions/upload-artifact@v4
-      if: false
       with:
         name: vsmlrt-cpu-release
         path: vsmlrt-windows-x64-cpu.7z
@@ -370,7 +409,6 @@ jobs:
 
     - name: Upload generic GPU release
       uses: actions/upload-artifact@v4
-      if: false
       with:
         name: vsmlrt-generic-gpu-release
         path: vsmlrt-windows-x64-generic-gpu.7z
@@ -413,7 +451,6 @@ jobs:
 
     - name: Upload CUDA release
       uses: actions/upload-artifact@v4
-      if: false
       with:
         name: vsmlrt-cuda-release
         path: vsmlrt-windows-x64-cuda.7z*
@@ -446,7 +483,6 @@ jobs:
 
     - name: Upload TensorRT release
       uses: actions/upload-artifact@v4
-      if: false
       with:
         name: vsmlrt-tensorrt-release
         path: vsmlrt-windows-x64-tensorrt.7z*
@@ -490,7 +526,6 @@ jobs:
 
     - name: Upload MIGraphX release
       uses: actions/upload-artifact@v4
-      if: false
       with:
         name: vsmlrt-migraphx-release
         path: vsmlrt-windows-x64-migraphx.7z

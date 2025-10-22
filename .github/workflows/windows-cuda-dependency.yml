@@ -107,7 +107,7 @@ jobs:
 
     - name: Compress
       run: |
-        7z a -t7z -bb3 -mx=7 vsmlrt-cuda.7z vsmlrt-cuda
+        7z a -t7z -bb3 -mx=9 vsmlrt-cuda.7z vsmlrt-cuda
 
     - name: Upload
       uses: actions/upload-artifact@v4
