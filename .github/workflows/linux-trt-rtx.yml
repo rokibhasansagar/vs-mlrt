@@ -10,14 +10,14 @@ on:
 jobs:
   build-linux:
     runs-on: ubuntu-24.04
-    
+
     defaults:
       run:
         working-directory: vstrt
 
     steps:
     - name: Checkout repo
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         fetch-depth: 0
 
@@ -26,7 +26,7 @@ jobs:
 
     - name: Download VapourSynth headers
       run: |
-        wget -q -O vs.zip https://github.com/vapoursynth/vapoursynth/archive/refs/tags/R57.zip
+        wget -q -O vs.zip https://github.com/vapoursynth/vapoursynth/archive/refs/tags/R65.zip
         unzip -q vs.zip
         mv vapoursynth*/ vapoursynth
 
@@ -63,6 +63,7 @@ jobs:
       run: |
         mkdir artifact
         cp -v install/lib/*.so artifact
+        ( ldd artifact/*.so 2>&1 ) || true
 
     - name: Describe
       run: git describe --tags --long

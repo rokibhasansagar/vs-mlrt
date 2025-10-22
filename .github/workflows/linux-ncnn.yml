@@ -6,19 +6,29 @@ on:
       - 'common/**'
       - 'vsncnn/**'
       - '.github/workflows/linux-ncnn.yml'
+  workflow_call:
+    inputs:
+      tag:
+        description: 'which tag to upload to'
+        required: true
+        type: string
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'which tag to upload to'
+        default: ''
 
 jobs:
   build-linux:
     runs-on: ubuntu-24.04
-    
+
     defaults:
       run:
         working-directory: vsncnn
 
     steps:
     - name: Checkout repo
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         fetch-depth: 0
 
@@ -33,7 +43,7 @@ jobs:
         key: ${{ runner.os }}-vsncnn-protobuf-v1
 
     - name: Checkout protobuf
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       if: steps.cache-protobuf.outputs.cache-hit != 'true'
       with:
         repository: protocolbuffers/protobuf
@@ -65,7 +75,7 @@ jobs:
 
     - name: Checkout onnx
       if: steps.cache-onnx.outputs.cache-hit != 'true'
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         repository: onnx/onnx
         ref: b86cc54efce19530fb953e4b21f57e6b3888534c
@@ -93,14 +103,25 @@ jobs:
 
     - name: Download VapourSynth headers
       run: |
-        wget -q -O vs.zip https://github.com/vapoursynth/vapoursynth/archive/refs/tags/R57.zip
+        wget -q -O vs.zip https://github.com/vapoursynth/vapoursynth/archive/refs/tags/R65.zip
         unzip -q vs.zip
         mv vapoursynth*/ vapoursynth
 
+    - name: Cache ncnn
+      id: cache-ncnn
+      uses: actions/cache@v4
+      with:
+        path: ncnn
+        key: ${{ runner.os }}-vsncnn-ncnn-v1
+
     - name: Download NCNN Precompilation
+      if: steps.cache-ncnn.outputs.cache-hit != 'true'
       run: |
-        curl -s -o ncnn.zip -LJO https://github.com/Tencent/ncnn/releases/download/20250503/ncnn-20250503-ubuntu-2404.zip
+        ncnnurl="https://github.com/Tencent/ncnn/releases/download/20250503/ncnn-20250503-ubuntu-2404.zip"
+        curl -s -o ncnn.zip -LJO "${ncnnurl}"
         unzip -q ncnn.zip
+        rm ncnn.zip
+        mv ncnn-*/ ncnn/
 
     - name: Configure
       run: cmake -S . -B build -G Ninja -LA
@@ -108,7 +129,7 @@ jobs:
         -D VAPOURSYNTH_INCLUDE_DIRECTORY=vapoursynth/include
         -D protobuf_DIR=protobuf/install/lib/cmake/protobuf
         -D ONNX_DIR=onnx/install/lib/cmake/ONNX
-        -D ncnn_DIR=ncnn-20250503-ubuntu-2404/lib/cmake/ncnn
+        -D ncnn_DIR=ncnn/lib/cmake/ncnn
         -D CMAKE_CXX_STANDARD=20
 
     - name: Build
@@ -121,6 +142,7 @@ jobs:
       run: |
         mkdir artifact
         cp -v install/lib/*.so artifact
+        ( ldd artifact/*.so 2>&1 ) || true
 
     - name: Describe
       run: git describe --tags --long
@@ -128,5 +150,23 @@ jobs:
     - name: Upload
       uses: actions/upload-artifact@v4
       with:
-        name: vsncnn-linux-x64
+        name: VSNCNN-Linux-x64
         path: vsncnn/artifact
+
+
+    - name: Compress artifact for release
+      if: github.event_name == 'workflow_dispatch' && github.event.inputs.tag != ''
+      run: |
+        cd artifact
+        7z a -t7z -mx=7 ../../VSNCNN-Linux-x64.${{ github.event.inputs.tag }}.7z .
+
+    - name: Release
+      uses: softprops/action-gh-release@v2
+      if: github.event_name == 'workflow_dispatch' && github.event.inputs.tag != ''
+      with:
+        tag_name: ${{ inputs.tag }}
+        files: VSNCNN-Linux-x64.${{ github.event.inputs.tag }}.7z
+        fail_on_unmatched_files: true
+        generate_release_notes: false
+        prerelease: true
+

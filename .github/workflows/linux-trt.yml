@@ -10,14 +10,14 @@ on:
 jobs:
   build-linux:
     runs-on: ubuntu-24.04
-    
+
     defaults:
       run:
         working-directory: vstrt
 
     steps:
     - name: Checkout repo
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         fetch-depth: 0
 
@@ -26,7 +26,7 @@ jobs:
 
     - name: Download VapourSynth headers
       run: |
-        wget -q -O vs.zip https://github.com/vapoursynth/vapoursynth/archive/refs/tags/R57.zip
+        wget -q -O vs.zip https://github.com/vapoursynth/vapoursynth/archive/refs/tags/R65.zip
         unzip -q vs.zip
         mv vapoursynth*/ vapoursynth
 
@@ -34,7 +34,7 @@ jobs:
       run: |
         wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
         sudo dpkg -i cuda-keyring_1.1-1_all.deb
-        sudo apt-get update
+        sudo apt-get update -qy
         export TRT_VER=10.13.2.6-1+cuda13.0
         sudo apt-get install -y --no-install-recommends cuda-nvcc-13-0 cuda-cudart-dev-13-0 libnvinfer-dev=${TRT_VER} libnvinfer-headers-dev=${TRT_VER} libnvinfer10=${TRT_VER}
         echo "PATH=/usr/local/cuda/bin${PATH:+:${PATH}}" >> $GITHUB_ENV
@@ -57,6 +57,7 @@ jobs:
       run: |
         mkdir artifact
         cp -v install/lib/*.so artifact
+        ( ldd artifact/*.so 2>&1 ) || true
 
     - name: Describe
       run: git describe --tags --long

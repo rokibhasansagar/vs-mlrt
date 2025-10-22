@@ -10,14 +10,14 @@ on:
 jobs:
   build-linux:
     runs-on: ubuntu-24.04-arm
-    
+
     defaults:
       run:
         working-directory: vsov
 
     steps:
     - name: Checkout repo
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         fetch-depth: 0
 
@@ -32,7 +32,7 @@ jobs:
         key: ${{ runner.os }}-vsov-protobuf-arm64-v1
 
     - name: Checkout protobuf
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       if: steps.cache-protobuf.outputs.cache-hit != 'true'
       with:
         repository: protocolbuffers/protobuf
@@ -66,7 +66,7 @@ jobs:
 
     - name: Checkout onnx
       if: steps.cache-onnx.outputs.cache-hit != 'true'
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         repository: onnx/onnx
         # follows onnx in https://github.com/openvinotoolkit/openvino/tree/2024.6.0/thirdparty/onnx
@@ -97,14 +97,23 @@ jobs:
 
     - name: Download VapourSynth headers
       run: |
-        wget -q -O vs.zip https://github.com/vapoursynth/vapoursynth/archive/refs/tags/R57.zip
+        wget -q -O vs.zip https://github.com/vapoursynth/vapoursynth/archive/refs/tags/R65.zip
         unzip -q vs.zip
         mv vapoursynth*/ vapoursynth
 
+    - name: Cache openvino
+      id: cache-openvino
+      uses: actions/cache@v4
+      with:
+        path: openvino
+        key: ${{ runner.os }}-vsov-openvino-arm64-v1
+
     - name: Setup OpenVINO
+      if: steps.cache-openvino.outputs.cache-hit != 'true'
       run: |
         curl -L -o ov.tgz https://storage.openvinotoolkit.org/repositories/openvino/packages/2024.6/linux/l_openvino_toolkit_ubuntu20_2024.6.0.17404.4c0f47d2335_arm64.tgz
         tar -xf ov.tgz
+        rm ov.tgz
         mv l_openvino_* openvino -v
 
     - name: Configure
@@ -128,6 +137,7 @@ jobs:
       run: |
         mkdir artifact
         cp -v install/lib/*.so artifact
+        ( ldd artifact/*.so 2>&1 ) || true
 
     - name: Describe
       run: git describe --tags --long

@@ -6,19 +6,30 @@ on:
       - 'common/**'
       - 'vsort/**'
       - '.github/workflows/linux-ort.yml'
+
+  workflow_call:
+    inputs:
+      tag:
+        description: 'which tag to upload to'
+        required: true
+        type: string
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'which tag to upload to'
+        default: ''
 
 jobs:
   build-linux:
-    runs-on: ubuntu-22.04
-    
+    runs-on: ubuntu-24.04
+
     defaults:
       run:
         working-directory: vsort
 
     steps:
     - name: Checkout repo
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         fetch-depth: 0
 
@@ -33,8 +44,8 @@ jobs:
         key: ${{ runner.os }}-vsort-protobuf-v1
 
     - name: Checkout protobuf
-      uses: actions/checkout@v4
       if: steps.cache-protobuf.outputs.cache-hit != 'true'
+      uses: actions/checkout@v5
       with:
         repository: protocolbuffers/protobuf
         # follows protobuf in https://github.com/microsoft/onnxruntime/blob/v1.17.1/cmake/external/onnxruntime_external_deps.cmake#L183
@@ -67,7 +78,7 @@ jobs:
 
     - name: Checkout onnx
       if: steps.cache-onnx.outputs.cache-hit != 'true'
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         repository: onnx/onnx
         # follows onnx in https://github.com/microsoft/onnxruntime/tree/v1.17.1/cmake/external
@@ -97,22 +108,31 @@ jobs:
 
     - name: Download VapourSynth headers
       run: |
-        wget -q -O vs.zip https://github.com/vapoursynth/vapoursynth/archive/refs/tags/R57.zip
+        wget -q -O vs.zip https://github.com/vapoursynth/vapoursynth/archive/refs/tags/R65.zip
         unzip -q vs.zip
         mv vapoursynth*/ vapoursynth
 
+    - name: Cache ONNX Runtime
+      id: cache-onnxrt
+      uses: actions/cache@v4
+      with:
+        path: onnxruntime
+        key: ${{ runner.os }}-vsort-onnxrt-v1
+
     - name: Setup ONNX Runtime
+      if: steps.cache-onnxrt.outputs.cache-hit !='true'
       run: |
-        curl -L -o ort.tgz https://github.com/microsoft/onnxruntime/releases/download/v1.17.1/onnxruntime-linux-x64-cuda12-1.17.1.tgz
+        onnx_rtver="1.17.1"
+        curl -sL -o ort.tgz https://github.com/microsoft/onnxruntime/releases/download/v${onnx_rtver}/onnxruntime-linux-x64-cuda12-${onnx_rtver}.tgz
         tar -xf ort.tgz
         mv onnxruntime-* onnxruntime -v
 
-    - name: Setup CUDA
+    - name: Setup CUDA 12.5
       run: |
-        wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb
+        wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
         sudo dpkg -i cuda-keyring_1.1-1_all.deb
-        sudo apt-get update
-        sudo apt-get install -y cuda-nvcc-12-1 cuda-cudart-dev-12-1
+        sudo apt-get update -qy
+        sudo apt-get install -y cuda-nvcc-12-5 cuda-cudart-dev-12-5
         echo "PATH=/usr/local/cuda/bin${PATH:+:${PATH}}" >> $GITHUB_ENV
         echo "CUDA_PATH=/usr/local/cuda" >> $GITHUB_ENV
         echo "LD_LIBRARY_PATH=/usr/local/cuda/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" >> $GITHUB_ENV
@@ -140,6 +160,7 @@ jobs:
       run: |
         mkdir artifact
         cp -v install/lib/*.so artifact
+        ( ldd artifact/*.so 2>&1 ) || true
 
     - name: Describe
       run: git describe --tags --long
@@ -147,5 +168,22 @@ jobs:
     - name: Upload
       uses: actions/upload-artifact@v4
       with:
-        name: vsort-linux-x64-cuda12.1
+        name: VSORT-Linux-x64
         path: vsort/artifact
+
+    - name: Compress artifact for release
+      if: github.event_name == 'workflow_dispatch' && github.event.inputs.tag != ''
+      run: |
+        cd artifact
+        7z a -t7z -mx=7 ../../VSORT-Linux-x64.${{ github.event.inputs.tag }}.7z .
+
+    - name: Release
+      uses: softprops/action-gh-release@v2
+      if: github.event_name == 'workflow_dispatch' && github.event.inputs.tag != ''
+      with:
+        tag_name: ${{ inputs.tag }}
+        files: VSORT-Linux-x64.${{ github.event.inputs.tag }}.7z
+        fail_on_unmatched_files: true
+        generate_release_notes: false
+        prerelease: true
+

@@ -5,19 +5,29 @@ on:
     paths:
       - 'vsov/**'
       - '.github/workflows/linux-ov.yml'
+  workflow_call:
+    inputs:
+      tag:
+        description: 'which tag to upload to'
+        required: true
+        type: string
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'which tag to upload to'
+        default: ''
 
 jobs:
   build-linux:
-    runs-on: ubuntu-22.04
-    
+    runs-on: ubuntu-24.04
+
     defaults:
       run:
         working-directory: vsov
 
     steps:
     - name: Checkout repo
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         fetch-depth: 0
 
@@ -32,7 +42,7 @@ jobs:
         key: ${{ runner.os }}-vsov-protobuf-v1
 
     - name: Checkout protobuf
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       if: steps.cache-protobuf.outputs.cache-hit != 'true'
       with:
         repository: protocolbuffers/protobuf
@@ -66,7 +76,7 @@ jobs:
 
     - name: Checkout onnx
       if: steps.cache-onnx.outputs.cache-hit != 'true'
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         repository: onnx/onnx
         # follows onnx in https://github.com/openvinotoolkit/openvino/tree/2024.6.0/thirdparty/onnx
@@ -97,14 +107,23 @@ jobs:
 
     - name: Download VapourSynth headers
       run: |
-        wget -q -O vs.zip https://github.com/vapoursynth/vapoursynth/archive/refs/tags/R57.zip
+        wget -q -O vs.zip https://github.com/vapoursynth/vapoursynth/archive/refs/tags/R65.zip
         unzip -q vs.zip
         mv vapoursynth*/ vapoursynth
 
+    - name: Cache openvino
+      id: cache-openvino
+      uses: actions/cache@v4
+      with:
+        path: openvino
+        key: ${{ runner.os }}-vsov-openvino-v1
+
     - name: Setup OpenVINO
+      if: steps.cache-openvino.outputs.cache-hit !='true'
       run: |
         curl -L -o ov.tgz https://storage.openvinotoolkit.org/repositories/openvino/packages/2024.6/linux/l_openvino_toolkit_ubuntu24_2024.6.0.17404.4c0f47d2335_x86_64.tgz
         tar -xf ov.tgz
+        rm ov.tgz
         mv l_openvino_* openvino -v
 
     - name: Configure
@@ -128,6 +147,7 @@ jobs:
       run: |
         mkdir artifact
         cp -v install/lib/*.so artifact
+        ( ldd artifact/*.so 2>&1 ) || true
 
     - name: Describe
       run: git describe --tags --long
@@ -137,4 +157,20 @@ jobs:
       with:
         name: VSOV-Linux-x64
         path: vsov/artifact
+
+    - name: Compress artifact for release
+      if: github.event_name == 'workflow_dispatch' && github.event.inputs.tag != ''
+      run: |
+        cd artifact
+        7z a -t7z -mx=7 ../../VSOV-Linux-x64.${{ github.event.inputs.tag }}.7z .
+
+    - name: Release
+      uses: softprops/action-gh-release@v2
+      if: github.event_name == 'workflow_dispatch' && github.event.inputs.tag != ''
+      with:
+        tag_name: ${{ inputs.tag }}
+        files: VSOV-Linux-x64.${{ github.event.inputs.tag }}.7z
+        fail_on_unmatched_files: true
+        generate_release_notes: false
+        prerelease: true
 
