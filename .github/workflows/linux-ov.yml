@@ -147,6 +147,7 @@ jobs:
       run: |
         mkdir artifact
         cp -v install/lib/*.so artifact
+        ( tree -a -h install 2>&1 ) || true
         ( ldd artifact/*.so 2>&1 ) || true
 
     - name: Describe
