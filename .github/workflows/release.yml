@@ -19,6 +19,11 @@ on:
         description: 'which tag(s) of contributed model release to use?'
         required: true
         default: 'contrib-models'
+      repack-models:
+        description: 'repack and re-release models or not?'
+        type: boolean
+        required: true
+        default: true
 
 jobs:
   build-vsov:
@@ -116,7 +121,14 @@ jobs:
   build-models:
     runs-on: ubuntu-24.04-arm
     steps:
+    - name: Skip Building Models
+      if: ${{ github.event.inputs.repack-models == 'false' }}
+      run: |
+        set -ex
+        echo -e "Skipping Models Release"
+        exit 0
     - name: Download Models
+      if: ${{ github.event.inputs.repack-models == 'true' }}
       run: |
         set -ex
         mkdir -p release/models
@@ -128,7 +140,7 @@ jobs:
           cat release.json
           for url in $(cat release.json | jq '.assets | .[] | .url ' | tr -d '"'); do
             echo "Downloading $url"
-            curl -o dl.7z -LJ -H 'Accept: application/octet-stream' -H 'Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}' "$url"
+            curl -s -o dl.7z -LJ -H 'Accept: application/octet-stream' -H 'Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}' "$url"
             # later release should overwrite earlier ones
             7za x -y dl.7z
           done
@@ -141,6 +153,7 @@ jobs:
         7za a -t7z -bb3 -mx=9 ../models.7z .
 
     - name: Upload model release
+      if: ${{ github.event.inputs.repack-models == 'true' }}
       uses: actions/upload-artifact@v4
       with:
         name: Models
@@ -149,6 +162,7 @@ jobs:
         compression-level: 0
 
     - name: Download External Models
+      if: ${{ github.event.inputs.repack-models == 'true' }}
       run: |
         rm -rf release
         set -ex
@@ -160,7 +174,7 @@ jobs:
           curl -s https://api.github.com/repos/AmusementClub/vs-mlrt/releases/tags/"$tag" > release.json
           for url in $(cat release.json | jq '.assets | .[] | .url ' | tr -d '"'); do
             echo "Downloading $url"
-            curl -o dl.7z -LJ -H 'Accept: application/octet-stream' "$url"
+            curl -s -o dl.7z -LJ -H 'Accept: application/octet-stream' "$url"
             # later release should overwrite earlier ones
             7za x -y dl.7z
           done
@@ -170,9 +184,10 @@ jobs:
         popd
         ls -lR
         du -sh
-        7za a -t7z -bb3 -mx=9 -v2147483647b ../ext-models.7z .
+        7za a -t7z -bb3 -mx=9 -v1073741823b ../ext-models.7z .
 
     - name: Upload external model release
+      if: ${{ github.event.inputs.repack-models == 'true' }}
       uses: actions/upload-artifact@v4
       with:
         name: External-Models
@@ -181,6 +196,7 @@ jobs:
         compression-level: 0
 
     - name: Download Contributed Models
+      if: ${{ github.event.inputs.repack-models == 'true' }}
       run: |
         rm -rf release
         set -ex
@@ -192,7 +208,7 @@ jobs:
           curl -s https://api.github.com/repos/AmusementClub/vs-mlrt/releases/tags/"$tag" > release.json
           for url in $(cat release.json | jq '.assets | .[] | .url ' | tr -d '"'); do
             echo "Downloading $url"
-            curl -o dl.7z -LJ -H 'Accept: application/octet-stream' "$url"
+            curl -s -o dl.7z -LJ -H 'Accept: application/octet-stream' "$url"
             # later release should overwrite earlier ones
             7za x -y dl.7z
           done
@@ -205,6 +221,7 @@ jobs:
         7za a -t7z -bb3 -mx=9 ../contrib-models.7z .
 
     - name: Upload contrib model release
+      if: ${{ github.event.inputs.repack-models == 'true' }}
       uses: actions/upload-artifact@v4
       with:
         name: Contrib-Models
@@ -213,12 +230,16 @@ jobs:
         compression-level: 0
 
     - name: Rename release asset
+      if: ${{ github.event.inputs.repack-models == 'true' }}
       run: |
         mv models.7z models.${{ github.event.inputs.tag }}.7z
-        for i in {001..002}; do mv ext-models.7z.${i} ext-models.${{ github.event.inputs.tag }}.7z.${i}; done
+        ls ext-models.7z.*?? | awk -F. '{print $NF}' | while read -r i; do
+          mv ext-models.7z.${i} ext-models.${{ github.event.inputs.tag }}.7z.${i}
+        done
         mv contrib-models.7z contrib-models.${{ github.event.inputs.tag }}.7z
 
     - name: Release models
+      if: ${{ github.event.inputs.repack-models == 'true' }}
       uses: softprops/action-gh-release@v2
       with:
         tag_name: ${{ github.event.inputs.tag }}
@@ -246,18 +267,21 @@ jobs:
         path: scripts-release
 
     - name: Download artifact for models
+      if: ${{ github.event.inputs.repack-models == 'true' }}
       uses: actions/download-artifact@v4
       with:
         name: Models
         path: models-release
 
     - name: Download artifact for ext-models
+      if: ${{ github.event.inputs.repack-models == 'true' }}
       uses: actions/download-artifact@v4
       with:
         name: External-Models
         path: models-release
 
     - name: Download artifact for contrib-models
+      if: ${{ github.event.inputs.repack-models == 'true' }}
       uses: actions/download-artifact@v4
       with:
         name: Contrib-Models
@@ -363,8 +387,8 @@ jobs:
     - name: Build CPU-only release
       shell: bash
       run: |
-        mkdir release-cpu
-        cp -r models-release/models release-cpu/
+        mkdir -p release-cpu/models
+        # cp -r models-release/models release-cpu/
         cp -r vsov-release/* release-cpu/
         cp -r vsort-release/* release-cpu/
         rm -f release-cpu/vsort/onnxruntime_providers_*.dll
@@ -396,8 +420,8 @@ jobs:
     - name: Build generic GPU release
       shell: bash
       run: |
-        mkdir release-generic-gpu
-        cp -r models-release/models release-generic-gpu/
+        mkdir -p release-generic-gpu/models
+        # cp -r models-release/models release-generic-gpu/
         cp -r vsov-release/* release-generic-gpu/
         cp -r vsort-release/* release-generic-gpu/
         rm -f release-generic-gpu/vsort/onnxruntime_providers_*.dll
@@ -436,8 +460,8 @@ jobs:
     - name: Build CUDA release
       shell: bash
       run: |
-        mkdir release-cuda
-        cp -r models-release/models release-cuda/
+        mkdir -p release-cuda/models
+        # cp -r models-release/models release-cuda/
         cp -r vsov-release/* release-cuda/
         cp -r vsort-release/* release-cuda/
         cp -r vstrt-release/* release-cuda/
@@ -447,7 +471,7 @@ jobs:
         cp scripts-release/*.py release-cuda/
         cd release-cuda
         ls -lR
-        7za a -t7z -bb3 -mx=9 -v2147483647b ../vsmlrt-windows-x64-cuda.7z .
+        7za a -t7z -bb3 -mx=9 -v1342177280b ../vsmlrt-windows-x64-cuda.7z .
 
     - name: Upload CUDA release
       uses: actions/upload-artifact@v4
@@ -459,8 +483,9 @@ jobs:
 
     - name: Rename release asset for CUDA release
       run: |
-        mv vsmlrt-windows-x64-cuda.7z.001 vsmlrt-windows-x64-cuda.${{ github.event.inputs.tag }}.7z.001
-        mv vsmlrt-windows-x64-cuda.7z.002 vsmlrt-windows-x64-cuda.${{ github.event.inputs.tag }}.7z.002
+        ls vsmlrt-windows-x64-cuda.7z.0?? | awk -F. '{print $NF}' | while read -r i; do
+          mv vsmlrt-windows-x64-cuda.7z.${i} vsmlrt-windows-x64-cuda.${{ github.event.inputs.tag }}.7z.${i}
+        done
 
     - name: Release CUDA
       uses: softprops/action-gh-release@v2
@@ -479,26 +504,25 @@ jobs:
         rm --verbose cublas*.dll cudnn*.dll cufft*.dll cupti*.dll nvblas*.dll
         cd ..
         rm --verbose vsort/onnxruntime_providers_*.dll
-        7za a -t7z -bb3 -mx=9 -v2147483647b ../vsmlrt-windows-x64-tensorrt.7z .
+        7za a -t7z -bb3 -mx=9 ../vsmlrt-windows-x64-tensorrt.7z .
 
     - name: Upload TensorRT release
       uses: actions/upload-artifact@v4
       with:
         name: vsmlrt-tensorrt-release
-        path: vsmlrt-windows-x64-tensorrt.7z*
+        path: vsmlrt-windows-x64-tensorrt.7z
         retention-days: 1
         compression-level: 0
 
     - name: Rename release asset for TensorRT release
       run: |
-        mv vsmlrt-windows-x64-tensorrt.7z.001 vsmlrt-windows-x64-tensorrt.${{ github.event.inputs.tag }}.7z.001
-        mv vsmlrt-windows-x64-tensorrt.7z.002 vsmlrt-windows-x64-tensorrt.${{ github.event.inputs.tag }}.7z.002
+        mv vsmlrt-windows-x64-tensorrt.7z vsmlrt-windows-x64-tensorrt.${{ github.event.inputs.tag }}.7z
 
     - name: Release TensorRT
       uses: softprops/action-gh-release@v2
       with:
         tag_name: ${{ github.event.inputs.tag }}
-        files: vsmlrt-windows-x64-tensorrt.${{ github.event.inputs.tag }}.7z*
+        files: vsmlrt-windows-x64-tensorrt.${{ github.event.inputs.tag }}.7z
         fail_on_unmatched_files: true
         generate_release_notes: false
         prerelease: true
@@ -512,8 +536,8 @@ jobs:
     - name: Build MIGraphX release
       shell: bash
       run: |
-        mkdir release-hip
-        cp -r models-release/models release-hip/
+        mkdir -p release-hip/models
+        # cp -r models-release/models release-hip/
         cp -r vsov-release/* release-hip/
         cp -r vsort-release/* release-hip/
         cp -r vsmigx-release/* release-hip/
